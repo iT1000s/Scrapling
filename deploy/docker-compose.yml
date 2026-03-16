@@ -1,0 +1,66 @@
+# ============================================================
+# Scrapling MCP Server - Docker Compose 编排文件
+# 适用于 1Panel 面板部署
+# ============================================================
+#
+# 使用方式：
+#   1. 复制 .env.example 为 .env 并修改配置
+#   2. docker compose up -d
+#
+# 注意事项：
+#   - 端口仅绑定到 127.0.0.1，必须通过 Nginx 反向代理访问
+#   - Chromium 浏览器需要较大的共享内存（shm_size）
+#   - 建议内存不低于 4GB
+
+services:
+  scrapling:
+    image: pyd4vinci/scrapling:latest
+    container_name: scrapling-mcp
+    restart: unless-stopped
+
+    # 以 streamable-http 模式运行 MCP Server
+    command: ["mcp", "--http", "--host", "0.0.0.0", "--port", "${MCP_PORT:-8000}"]
+
+    ports:
+      # 仅绑定到 127.0.0.1，不直接暴露公网
+      - "127.0.0.1:${MCP_HOST_PORT:-8000}:${MCP_PORT:-8000}"
+
+    environment:
+      # Python 优化
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+
+    # Chromium 浏览器需要较大的共享内存
+    shm_size: "${MCP_SHM_SIZE:-2g}"
+
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: "${MCP_CPU_LIMIT:-4}"
+          memory: "${MCP_MEMORY_LIMIT:-4g}"
+        reservations:
+          memory: 512m
+
+    # 使用 tmpfs 提升临时文件性能
+    tmpfs:
+      - /tmp:size=512m
+
+    # 安全设置
+    security_opt:
+      - no-new-privileges:true
+
+    # 日志配置
+    logging:
+      driver: json-file
+      options:
+        max-size: "${MCP_LOG_MAX_SIZE:-50m}"
+        max-file: "${MCP_LOG_MAX_FILE:-3}"
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:${MCP_PORT:-8000}/mcp/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
